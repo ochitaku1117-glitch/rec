@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="録音">
+<meta name="robots" content="noindex,nofollow">
+<title>録音</title>
+<style>
+/* 録音（スマホ・PC）。録音する → 止めると、書き起こし・Google ドキュメント・タスク・カレンダーまで。裏は Apps Script「タカハシの録音」。 */
+:root{color-scheme:light dark;--bg:#fff;--panel:#f6f6f4;--line:#e0e0dc;--line-2:#cfcfcb;--ink:#1f1f1f;--ink-2:#4a4a4a;--mute:#777;--accent:#2f64c8;--accent-ink:#fff;--red:#c2362f;--green:#2e7d4f;--amber:#a86a12}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1c1c;--panel:#262626;--line:#3a3a3a;--line-2:#474747;--ink:#e8e8e6;--ink-2:#bdbdba;--mute:#8c8c89;--accent:#6f9bea;--accent-ink:#111;--red:#e2665f;--green:#5fb884;--amber:#d9a24a}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:"Hiragino Sans","Yu Gothic UI","Meiryo UI",system-ui,sans-serif;font-size:15px;line-height:1.6}
+main{max-width:560px;margin:0 auto;padding:calc(14px + env(safe-area-inset-top)) 16px 64px}
+.top{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+h1{font-size:17px;margin:0;font-weight:700}
+h2{font-size:13px;color:var(--mute);margin:0 0 8px;font-weight:600}
+.sec{margin-top:20px;border-top:1px solid var(--line);padding-top:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.btn{padding:11px 14px;border-radius:10px;border:1px solid var(--line-2);background:var(--panel);color:var(--ink);font:inherit;font-weight:600;cursor:pointer;font-size:15px}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn:disabled{opacity:.5}
+.st{margin-top:8px;font-size:13.5px;color:var(--mute);white-space:pre-wrap}
+.st.err{color:var(--red)}.st.ok{color:var(--green)}
+.note{font-size:12.5px;color:var(--mute);margin-top:8px;line-height:1.7}
+.big{appearance:none;-webkit-appearance:none;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:88px;border-radius:12px;border:2px solid var(--red);background:var(--panel);color:var(--red);font:inherit;font-size:20px;font-weight:700;cursor:pointer}
+.big .dot{width:16px;height:16px;border-radius:50%;background:var(--red)}
+.docs a{display:block;padding:9px 0;border-bottom:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:14.5px}
+.empty{color:var(--mute);font-size:13.5px}
+#pass{width:100%;padding:11px 12px;border:1px solid var(--line-2);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit;font-size:16px}
+a{color:var(--accent)}
+.big:disabled{opacity:.5}
+#recnote{width:100%;margin-top:8px;padding:10px 12px;border:1px solid var(--line-2);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit;font-size:16px;outline:0}
+#recnote:focus{border-color:var(--accent)}
+.clock{display:flex;align-items:center;gap:10px;font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2;padding:6px 2px 2px}
+.clock .live{width:14px;height:14px;border-radius:50%;background:var(--red)}
+.clock.paused .live{background:var(--mute)}
+.clock .segs{font-size:12.5px;font-weight:500;color:var(--mute);margin-left:auto}
+.meter{height:8px;border-radius:4px;background:var(--panel);border:1px solid var(--line);overflow:hidden;margin:6px 0 2px}
+.meter i{display:block;height:100%;width:0;background:var(--green)}
+.job{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:8px}
+.job .jt{font-weight:700;font-size:15px}
+.job .js{font-size:13.5px;color:var(--ink-2);margin-top:2px}
+.job .js.err{color:var(--red)}
+.job .bar{height:4px;border-radius:2px;background:var(--panel);overflow:hidden;margin-top:6px}
+.job .bar i{display:block;height:100%;background:var(--accent)}
+.job .lb{font-size:12px;color:var(--mute);font-weight:600;margin-top:8px}
+.job ul{margin:2px 0 0;padding-left:18px;font-size:13.5px}
+.job a.open{display:inline-block;margin-top:8px;font-weight:600}
+.job .x{float:right;border:0;background:none;color:var(--mute);font-size:13px;cursor:pointer;padding:0 0 0 8px}
+
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><h1>録音</h1></div>
+  <div id="gate" hidden>
+    <h2>合言葉（最初の1回だけ）</h2>
+    <input id="pass" type="password" autocomplete="current-password">
+    <div class="two"><span></span><button class="btn pri" id="passgo" type="button">開く</button></div>
+    <div class="st" id="passst"></div>
+  </div>
+  <div id="app" hidden>
+    <button class="big" id="recgo" type="button"><span class="dot"></span><span>録音する</span></button>
+    <div id="recon" hidden>
+      <div class="clock"><span class="live"></span><span id="clock">00:00</span><span class="segs" id="segs"></span></div>
+      <div class="meter"><i id="lvl"></i></div>
+      <div class="two"><button class="btn" id="recpause" type="button">一時停止</button><button class="btn pri" id="recstop" type="button">止めて書き起こす</button></div>
+    </div>
+    <input id="recnote" type="text" autocomplete="off" placeholder="何の録音か（任意。相手・テーマを書くと精度が上がります）">
+    <div class="st" id="recst"></div>
+    <div id="jobs"></div>
+    <div class="note">録音中は画面をつけたままにしてください（画面を消す・ほかのアプリに切り替えると止まります）。5分ごとに自動で保存するので、途中で切れてもそこまでは残ります。止めると数分で、ドライブの「録音」にドキュメントができ、宿題はタスクに、予定はカレンダーに入ります。</div>
+    <div class="sec"><h2>できたもの（書き起こし）</h2><div class="docs" id="docs"></div></div>
+  </div>
+</main>
+<script>
+(function(){
+"use strict";
+var API="https://script.google.com/macros/s/AKfycby8JkLobtYWihRF29jxD1cU4eWck7e9dHKqvzS1Kgwj9UJIAc7047yw0EhcvC5SdqgO/exec";
+var $=function(id){return document.getElementById(id)};
+var PASS="";try{PASS=localStorage.getItem("takahashi.pass")||""}catch(x){}
+// 裏（Apps Script）を呼ぶ。合言葉を毎回渡す
+function gs(fn){var a=[].slice.call(arguments,1);
+  return fetch(API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({api:"rec",p:PASS,fn:fn,args:a}),redirect:"follow"})
+    .then(function(r){if(!r.ok)throw new Error("つながりませんでした（"+r.status+"）");return r.json()})
+    .then(function(j){if(!j||!j.ok)throw new Error(j&&j.error||"失敗しました");return j.r})}
+function keepPass(p){PASS=p;try{localStorage.setItem("takahashi.pass",p)}catch(x){}}
+function msg(id,t,cls){$(id).textContent=t;$(id).className="st"+(cls?" "+cls:"")}
+function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+function docs(list){var D=$("docs");D.textContent="";(list||[]).forEach(function(x){var a=el("a",null,x.name);a.href=x.url;a.target="_blank";a.rel="noopener";D.appendChild(a)});if(!(list||[]).length)D.appendChild(el("div","empty","まだありません"))}
+function gate(t){$("gate").hidden=false;$("app").hidden=true;if(t)msg("passst",t,"err")}
+function load(){
+  if(!PASS){gate();return}
+  $("gate").hidden=true;$("app").hidden=false;
+  gs("status").then(function(r){docs(r.recent);if(!r.hasKey)msg("recst","書き起こしの鍵（Gemini）が未設定です","err");poll();drive()})
+    .catch(function(e){var m=String(e&&e.message||e);if(/合言葉/.test(m)){try{localStorage.removeItem("takahashi.pass")}catch(x){}PASS="";gate("合言葉が違います")}else msg("recst","読み込めませんでした: "+m,"err")});
+}
+$("passgo").addEventListener("click",function(){var v=$("pass").value.trim();if(!v)return;msg("passst","確かめています…");var old=PASS;PASS=v;
+  gs("checkPass").then(function(){keepPass(v);$("pass").value="";msg("passst","");load()}).catch(function(e){PASS=old;msg("passst",/合言葉/.test(String(e&&e.message))?"合言葉が違います":"確かめられませんでした: "+(e&&e.message||e),"err")})});
+$("pass").addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.isComposing)$("passgo").click()});
+// ── 録音（このページで録る。5分ごとに区切って送り、止めたら書き起こしを進める）──
+var SEG_MS=5*60*1000;
+var R={on:false,paused:false,stopping:false,session:"",idx:0,made:0,sent:0,stream:null,mr:null,t0:0,elapsed:0,tick:null,rot:null,queue:[],sending:false,after:null,lock:null,ac:null,meter:null,sendErr:""};
+var J=[];try{J=JSON.parse(localStorage.getItem("takahashi.jobs")||"[]")}catch(x){J=[]}
+function pad(n){return("0"+n).slice(-2)}
+function recMsg(t,cls){msg("recst",t||"",cls)}
+function saveJ(){try{localStorage.setItem("takahashi.jobs",JSON.stringify(J.slice(0,6).map(function(j){return{s:j.s,t0:j.t0,note:j.note,state:j.state,done:j.done,total:j.total,title:j.title,doc:j.doc,tasks:j.tasks,events:j.events,error:j.error}})))}catch(x){}}
+function newSession(){var d=new Date();return"r"+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"-"+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds())+"-"+(Math.random().toString(36).slice(2,6)+"xxxx").slice(0,4)}
+function pickMime(){if(!window.MediaRecorder||!MediaRecorder.isTypeSupported)return"";
+  var c=["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg;codecs=opus"];for(var i=0;i<c.length;i++){try{if(MediaRecorder.isTypeSupported(c[i]))return c[i]}catch(x){}}return""}
+function fmtClock(ms){var s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor(s%3600/60);return(h?h+":":"")+pad(m)+":"+pad(s%60)}
+function nowElapsed(){return R.elapsed+(R.on&&!R.paused&&R.t0?Date.now()-R.t0:0)}
+function paintRec(){
+  $("recgo").hidden=R.on;$("recon").hidden=!R.on;
+  $("recgo").disabled=!R.on&&(R.queue.length>0||R.sending);
+  if(R.on){$("clock").textContent=fmtClock(nowElapsed());$("clock").parentNode.className="clock"+(R.paused?" paused":"");
+    $("recpause").textContent=R.paused?"続ける":"一時停止";
+    var wait=R.queue.length;$("segs").textContent=R.made?("保存 "+R.sent+"/"+R.made+(wait&&R.sendErr?"（送り直し中）":"")):""}
+}
+function clockOn(){clearInterval(R.tick);R.tick=setInterval(paintRec,500)}
+function wake(){try{if(navigator.wakeLock&&navigator.wakeLock.request)navigator.wakeLock.request("screen").then(function(l){R.lock=l}).catch(function(){})}catch(x){}}
+function unwake(){try{if(R.lock)R.lock.release()}catch(x){}R.lock=null}
+function meterOn(st){meterOff();try{var AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;var ac=new AC(),an=ac.createAnalyser();an.fftSize=512;ac.createMediaStreamSource(st).connect(an);
+    if(ac.state==="suspended"&&ac.resume)ac.resume();var buf=new Uint8Array(an.fftSize);R.ac=ac;
+    R.meter=setInterval(function(){an.getByteTimeDomainData(buf);var p=0;for(var i=0;i<buf.length;i++){var v=Math.abs(buf[i]-128);if(v>p)p=v}$("lvl").style.width=(R.paused?0:Math.min(100,Math.round(p/128*260)))+"%"},120)}catch(x){}}
+function meterOff(){clearInterval(R.meter);R.meter=null;try{if(R.ac)R.ac.close()}catch(x){}R.ac=null;$("lvl").style.width="0"}
+function attach(st){R.stream=st;st.getAudioTracks().forEach(function(t){t.addEventListener("ended",onLost);t.addEventListener("mute",function(){setTimeout(function(){if(t.muted&&R.stream===st)onLost()},4000)})});meterOn(st)}
+function dropStream(){var s=R.stream;R.stream=null;try{if(s)s.getTracks().forEach(function(t){t.stop()})}catch(x){}meterOff()}
+function startSeg(){
+  var mime=pickMime(),sess=R.session,chunks=[];
+  var mr=new MediaRecorder(R.stream,mime?{mimeType:mime,audioBitsPerSecond:64000}:{audioBitsPerSecond:64000});
+  mr.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data)};
+  mr.onstop=function(){var type=mr.mimeType||mime||"audio/mp4",b=new Blob(chunks,{type:type});chunks=[];
+    if(b.size>1500){R.idx++;R.made++;R.queue.push({s:sess,idx:R.idx,blob:b,mime:type,tries:0});pump()}
+    if(mr._then){var f=mr._then;mr._then=null;f()}paintRec()};
+  mr.onerror=function(){onLost()};
+  mr.start(1000);R.mr=mr;
+  clearTimeout(R.rot);R.rot=setTimeout(rotate,SEG_MS);
+}
+// 区切り: 先に次の録音を始めてから前を止める（切れ目で声が欠けないように）。だめなら止めてから始める
+function rotate(){
+  if(!R.on||R.paused||R.stopping||!R.mr||R.mr.state==="inactive")return;
+  var old=R.mr;
+  try{startSeg();old.stop()}catch(x){R.mr=old;old._then=function(){if(R.on&&!R.paused&&!R.stopping){try{startSeg()}catch(y){onLost()}}};try{old.stop()}catch(y){}}
+}
+function flush(then){var mr=R.mr;clearTimeout(R.rot);if(mr&&mr.state!=="inactive"){mr._then=then||null;try{mr.stop()}catch(x){if(then)then()}}else if(then)then()}
+var MIC={audio:{echoCancellation:false,noiseSuppression:true,autoGainControl:true,channelCount:1}};
+function recStart(){
+  if(R.on)return;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!window.MediaRecorder){recMsg("このブラウザでは録音できません。下の「録ってある音声ファイルを送る」を使ってください","err");return}
+  recMsg("マイクを確かめています…");
+  navigator.mediaDevices.getUserMedia(MIC).then(function(st){
+    R.session=newSession();R.idx=0;R.made=0;R.sent=0;R.elapsed=0;R.sendErr="";R.on=true;R.paused=false;R.stopping=false;
+    attach(st);
+    try{startSeg()}catch(e){R.on=false;dropStream();paintRec();recMsg("録音を始められませんでした（"+(e&&e.message||e)+"）","err");return}
+    R.t0=Date.now();clockOn();wake();paintRec();recMsg("録音しています");
+  }).catch(function(e){var n=e&&e.name||"";recMsg(n==="NotAllowedError"||n==="SecurityError"?"マイクが許可されていません。ブラウザの設定でこのページのマイクを許可してから、もう一度押してください":"マイクが使えませんでした（"+(n||e)+"）","err")});
+}
+function recPause(){
+  if(!R.on||R.stopping)return;
+  if(!R.paused){R.elapsed+=Date.now()-R.t0;R.paused=true;flush();paintRec();recMsg("一時停止中");return}
+  var go=function(){try{startSeg()}catch(e){recMsg("続けられませんでした（"+(e&&e.message||e)+"）","err");return}R.paused=false;R.t0=Date.now();wake();paintRec();recMsg("録音しています")};
+  var live=R.stream&&R.stream.getAudioTracks().some(function(t){return t.readyState==="live"&&!t.muted});
+  if(live){go();return}
+  dropStream();
+  navigator.mediaDevices.getUserMedia(MIC).then(function(st){attach(st);go()})
+    .catch(function(e){recMsg("マイクが使えませんでした（"+(e&&e.name||e)+"）。もう一度「続ける」を押してください","err")});
+}
+// 電話・画面の切り替えなどでマイクが切れたとき: そこまでを保存して、一時停止にする
+function onLost(){
+  if(!R.on||R.paused||R.stopping)return;
+  R.elapsed+=Date.now()-R.t0;R.paused=true;flush();paintRec();
+  recMsg("録音が止まりました（電話・画面の切り替えなど）。「続ける」を押すと、同じ録音の続きになります","err");
+}
+function recStop(){
+  if(!R.on||R.stopping)return;
+  R.stopping=true;if(!R.paused)R.elapsed+=Date.now()-R.t0;R.paused=true;
+  var sess=R.session,sec=Math.round(R.elapsed/1000),note=$("recnote").value.trim();
+  clearInterval(R.tick);unwake();recMsg("保存しています…");$("recstop").disabled=$("recpause").disabled=true;
+  flush(function(){
+    dropStream();
+    var done=function(){
+      R.on=false;R.stopping=false;R.paused=false;$("recstop").disabled=$("recpause").disabled=false;paintRec();
+      if(!R.made){recMsg("音が録れていませんでした","err");return}
+      var made=R.made;
+      (function fin(n){gs("finishSession",sess,{note:note,segs:made,sec:sec,segSec:SEG_MS/1000}).then(function(){$("recnote").value="";recMsg("保存しました。書き起こしを始めます","ok");track(sess,note)})
+        .catch(function(e){if(n<5){recMsg("保存の仕上げを送り直しています…");setTimeout(function(){fin(n+1)},4000)}else recMsg("仕上げを送れませんでした（"+(e&&e.message||e)+"）。音声は保存済みなので、30分ほどで自動で書き起こされます","err")})})(0);
+    };
+    if(R.queue.length||R.sending){R.after=done;recMsg("保存しています…（電波の良い所で、このページを開いたままに）");pump()}else done();
+  });
+}
+function pump(){
+  if(R.sending)return;
+  if(!R.queue.length){if(R.after){var f=R.after;R.after=null;f()}paintRec();return}
+  R.sending=true;var q=R.queue[0],fr=new FileReader();
+  fr.onload=function(){
+    gs("saveSegment",q.s,q.idx,String(fr.result).split(",")[1],q.mime).then(function(){R.queue.shift();R.sent++;R.sending=false;R.sendErr="";paintRec();pump()})
+      .catch(function(e){R.sending=false;q.tries++;R.sendErr=String(e&&e.message||e);paintRec();setTimeout(pump,Math.min(30000,3000*q.tries))});
+  };
+  fr.onerror=function(){R.sending=false;setTimeout(pump,3000)};
+  fr.readAsDataURL(q.blob);
+}
+// 書き起こしの進み具合（録音ごと）。ページを開いている間は processNow を呼び続けて早く進める（閉じても5分ごとに進む）
+function job(s){for(var i=0;i<J.length;i++)if(J[i].s===s)return J[i];return null}
+function isEnd(j){return j.state==="完了"||j.state==="失敗"}
+function track(s,note){if(!job(s))J.unshift({s:s,t0:Date.now(),note:note||"",state:"順番待ち"});saveJ();paintJobs();drive()}
+var DRIVING=false;
+function drive(){
+  if(DRIVING||!PASS)return;
+  if(!J.some(function(j){return!isEnd(j)&&Date.now()-j.t0<6*3600000}))return;
+  DRIVING=true;
+  gs("processNow").then(function(r){DRIVING=false;if(r&&r.error)recMsg(r.error,"err");setTimeout(drive,r&&r.busy?10000:2000)}).catch(function(){DRIVING=false;setTimeout(drive,10000)});
+}
+function poll(){
+  if(!PASS)return;
+  J.forEach(function(j){
+    if(isEnd(j)||Date.now()-j.t0>6*3600000||j.asking)return;j.asking=true;
+    gs("sessionStatus",j.s).then(function(s){j.asking=false;if(!s||!s.state)return;
+      var was=j.state;j.state=s.state;j.done=s.done;j.total=s.total;j.title=s.title;j.doc=s.doc;j.tasks=s.tasks;j.events=s.events;j.error=s.error;
+      if(s.recent)docs(s.recent);saveJ();paintJobs();
+      if(was!==j.state&&j.state==="完了")recMsg("書き起こしができました","ok")}).catch(function(){j.asking=false});
+  });
+}
+function paintJobs(){
+  var L=$("jobs");L.textContent="";
+  J.slice(0,4).forEach(function(j){
+    var c=el("div","job"),x=el("button","x","消す");x.type="button";x.addEventListener("click",function(){J=J.filter(function(k){return k!==j});saveJ();paintJobs()});
+    if(isEnd(j))c.appendChild(x);
+    var d=new Date(j.t0);
+    c.appendChild(el("div","jt",j.title||("録音 "+(d.getMonth()+1)+"/"+d.getDate()+" "+pad(d.getHours())+":"+pad(d.getMinutes())+(j.note?"　"+j.note:""))));
+    if(!isEnd(j)){
+      var t=j.state||"順番待ち";if(j.state==="書き起こし中"&&j.total)t+="（"+(j.done||0)+"/"+j.total+"）";
+      if(j.state==="やり直し中"&&j.error)t+="（"+j.error+"）";
+      c.appendChild(el("div","js",t+"…"));
+      var b=el("div","bar"),i=el("i");i.style.width=(j.state==="仕上げ中"?92:j.total?Math.max(4,Math.round((j.done||0)/j.total*85)):4)+"%";b.appendChild(i);c.appendChild(b);
+    }else if(j.state==="失敗"){c.appendChild(el("div","js err","書き起こせませんでした"+(j.error?"（"+j.error+"）":"")))}
+    if(j.state==="完了"){
+      var add=function(label,list,empty){c.appendChild(el("div","lb",label));if(list&&list.length){var u=el("ul");list.forEach(function(s){u.appendChild(el("li",null,s))});c.appendChild(u)}else c.appendChild(el("div","js",empty))};
+      add("タスクに入れたもの",j.tasks,"宿題はありませんでした");
+      add("予定",j.events,"予定はありませんでした");
+      if(j.doc){var a=el("a","open","ドキュメントを開く");a.href=j.doc;a.target="_blank";c.appendChild(a)}
+    }
+    L.appendChild(c)});
+}
+$("recgo").addEventListener("click",recStart);
+$("recpause").addEventListener("click",recPause);
+$("recstop").addEventListener("click",recStop);
+document.addEventListener("visibilitychange",function(){
+  if(document.visibilityState!=="visible")return;
+  if(R.on&&!R.paused&&!R.stopping){wake();var ok=R.stream&&R.stream.getAudioTracks().some(function(t){return t.readyState==="live"&&!t.muted});if(!ok||!R.mr||R.mr.state==="inactive")onLost()}
+  poll();drive()});
+window.addEventListener("beforeunload",function(e){if(R.on||R.queue.length||R.sending){e.preventDefault();e.returnValue="録音の保存が終わっていません"}});
+setInterval(function(){if(document.visibilityState==="visible")poll()},5000);
+paintRec();paintJobs();
+
+// リンクに #p=合言葉 が付いていれば、それを覚えて、アドレスからは消す
+try{var m=/(?:^|[#&])p=([^&]+)/.exec(location.hash||"");if(m){keepPass(decodeURIComponent(m[1]));history.replaceState(null,"",location.pathname+location.search)}}catch(x){}
+load();
+})();
+</script>
+</body>
+</html>
